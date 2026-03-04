@@ -1,0 +1,457 @@
+
+import json
+import math
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import av
+import torch
+import transformers
+from PIL import Image
+
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import cm
+from reportlab.pdfgen import canvas
+
+
+# -----------------------------
+# Config
+# -----------------------------
+
+
+ROOT = Path(__file__).parents[1]
+PIXELS_PER_TOKEN = 32**2
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    model_name: str = "nvidia/Cosmos-Reason2-2B"
+    # model_name: str = "nvidia/Cosmos-Reason2-8B"
+    dtype: torch.dtype = torch.float16
+    attn_implementation: str = "sdpa"
+    seed: int = 0
+    fps_for_prompt: int = 10
+    max_new_tokens: int = 4096
+    min_vision_tokens: int = 256
+    max_vision_tokens: int = 8192
+
+
+# -----------------------------
+# Prompt builder
+# -----------------------------
+
+SYSTEM_PROMPT = """You are a UK worksite safety compliance agent for roadworks, streetworks, and construction videos.
+
+Your job is to produce a compliance report for:
+1) PPE compliance (hard hats, hi-vis vests/jackets, other visible PPE if relevant)
+2) UK roadworks “Chapter 8” traffic management: signage presence/placement/clarity (e.g., warning signs, directional signs, cones, temporary traffic control)
+3) Barrier continuity and site segregation: connected barriers, gaps, unsafe openings, missing end-caps, unclear boundaries.
+
+Rules:
+- Base findings ONLY on what is clearly visible. If unsure, say “uncertain”.
+- Provide timestamps (start/end) for each observation.
+- If you report a failure, request evidence frames at specific timestamps (seconds).
+- Do not invent standards text or claim legal compliance; describe visual compliance/risks.
+- Prefer structured output and be concise.
+
+Output MUST be valid JSON matching the provided schema.
+"""
+
+USER_PROMPT = """Analyze the video for UK roadworks/streetworks safety and produce a structured safety report.
+
+Return JSON exactly in this schema:
+
+{
+  "video_id": "string",
+  "summary": {
+    "overall_risk_level": "low|medium|high",
+    "key_findings": ["string", "..."]
+  },
+  "checks": [
+    {
+      "check_type": "PPE",
+      "status": "pass|fail|partial|uncertain",
+      "findings": [
+        {
+          "timestamp_range_s": [start_s, end_s],
+          "observation": "string",
+          "confidence": "low|medium|high",
+          "evidence_timestamps_s": [t1, t2]
+        }
+      ]
+    },
+    {
+      "check_type": "CHAPTER_8_SIGNAGE",
+      "status": "pass|fail|partial|uncertain",
+      "findings": [
+        {
+          "timestamp_range_s": [start_s, end_s],
+          "observation": "string",
+          "confidence": "low|medium|high",
+          "evidence_timestamps_s": [t1, t2]
+        }
+      ]
+    },
+    {
+      "check_type": "BARRIER_CONTINUITY",
+      "status": "pass|fail|partial|uncertain",
+      "findings": [
+        {
+          "timestamp_range_s": [start_s, end_s],
+          "observation": "string",
+          "confidence": "low|medium|high",
+          "evidence_timestamps_s": [t1, t2]
+        }
+      ]
+    }
+  ],
+  "recommendations": ["string", "..."],
+  "notes": ["string", "..."]
+}
+
+Additional guidance:
+- “status=fail” only if a clear safety issue is visible.
+- “partial” if mixed compliance.
+- Include evidence_timestamps_s only when helpful (especially for failures).
+- Use integer seconds for timestamps.
+- Keep key_findings and recommendations action-oriented.
+"""
+
+
+# -----------------------------
+# Model runner
+# -----------------------------
+
+def load_model(cfg: ModelConfig):
+    transformers.set_seed(cfg.seed)
+
+    model = transformers.Qwen3VLForConditionalGeneration.from_pretrained(
+        cfg.model_name,
+        dtype=cfg.dtype,
+        device_map="auto",
+        attn_implementation=cfg.attn_implementation,
+    )
+    processor = transformers.Qwen3VLProcessor.from_pretrained(cfg.model_name)
+
+    processor.image_processor.size = {
+        "shortest_edge": cfg.min_vision_tokens * PIXELS_PER_TOKEN,
+        "longest_edge": cfg.max_vision_tokens * PIXELS_PER_TOKEN,
+    }
+    processor.video_processor.size = {
+        "shortest_edge": cfg.min_vision_tokens * PIXELS_PER_TOKEN,
+        "longest_edge": cfg.max_vision_tokens * PIXELS_PER_TOKEN,
+    }
+
+    return model, processor
+
+
+def run_video_json_report(
+    model,
+    processor,
+    video_path: Path,
+    video_id: str,
+    cfg: ModelConfig,
+) -> Dict[str, Any]:
+    conversation = [
+        {
+            "role": "system",
+            "content": [{"type": "text", "text": SYSTEM_PROMPT}],
+        },
+        {
+            "role": "user",
+            "content": [
+                {"type": "video", "video": str(video_path)},
+                {"type": "text", "text": USER_PROMPT.replace('"video_id": "string"', f'"video_id": "{video_id}"')},
+            ],
+        },
+    ]
+
+    inputs = processor.apply_chat_template(
+        conversation,
+        tokenize=True,
+        add_generation_prompt=True,
+        return_dict=True,
+        return_tensors="pt",
+        fps=cfg.fps_for_prompt,
+    ).to(model.device)
+
+    generated_ids = model.generate(**inputs, max_new_tokens=cfg.max_new_tokens)
+    generated_ids_trimmed = [
+        out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids, strict=False)
+    ]
+
+    output_text = processor.batch_decode(
+        generated_ids_trimmed,
+        skip_special_tokens=True,
+        clean_up_tokenization_spaces=False,
+    )[0]
+
+    print(f'Output: {output_text}')
+    return coerce_json(output_text)
+
+
+# -----------------------------
+# Robust JSON parsing
+# -----------------------------
+
+def coerce_json(text: str) -> Dict[str, Any]:
+    """
+    Cosmos/Qwen outputs might include extra text; try to extract the first JSON object.
+    """
+    # First try direct parse
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Extract JSON block
+    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if not match:
+        raise ValueError(f"Could not find JSON object in model output:\n{text}")
+
+    json_str = match.group(0)
+    # Remove trailing junk after the last brace (rare, but safe)
+    json_str = json_str[: json_str.rfind("}") + 1]
+
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Failed to parse extracted JSON. Error={e}\nExtracted:\n{json_str}\n\nFull:\n{text}") from e
+
+
+# -----------------------------
+# Evidence frame extraction
+# -----------------------------
+
+def get_video_duration_s(video_path: Path) -> float:
+    with av.open(str(video_path)) as container:
+        stream = container.streams.video[0]
+        if stream.duration is not None and stream.time_base is not None:
+            return float(stream.duration * stream.time_base)
+    # Fallback: decode frames and estimate (slower)
+    with av.open(str(video_path)) as container:
+        stream = container.streams.video[0]
+        last_pts = None
+        for frame in container.decode(video=0):
+            last_pts = frame.pts
+        if last_pts is None or stream.time_base is None:
+            return 0.0
+        return float(last_pts * stream.time_base)
+
+
+def extract_frame_at_second(
+    video_path: Path,
+    t_s: int,
+    out_path: Path,
+) -> Path:
+    """
+    Seek and decode closest frame to t_s (seconds) and save as PNG.
+    """
+    with av.open(str(video_path)) as container:
+        stream = container.streams.video[0]
+        time_base = stream.time_base
+
+        # Clamp seek target
+        duration = get_video_duration_s(video_path)
+        t_s = int(max(0, min(t_s, math.floor(duration))) if duration > 0 else max(0, t_s))
+
+        # Convert seconds to PTS units (microseconds-based seek)
+        seek_ts = int(t_s / time_base) if time_base is not None else t_s
+        container.seek(seek_ts, stream=stream)
+
+        for frame in container.decode(video=0):
+            # Find first frame at or after t_s (best-effort)
+            if frame.pts is None or time_base is None:
+                img = frame.to_image()
+                img.save(out_path)
+                return out_path
+
+            frame_time = float(frame.pts * time_base)
+            if frame_time >= t_s:
+                img = frame.to_image()
+                img.save(out_path)
+                return out_path
+
+        # Fallback: if nothing found after seek, decode last frame
+        container.seek(0, stream=stream)
+        last = None
+        for frame in container.decode(video=0):
+            last = frame
+        if last is None:
+            raise RuntimeError("Could not decode any frames from the video.")
+        last.to_image().save(out_path)
+        return out_path
+
+
+def _normalize_checks(raw_checks: Any) -> List[Dict[str, Any]]:
+    if isinstance(raw_checks, dict):
+        # If it already looks like a single check object, wrap it.
+        if any(k in raw_checks for k in ("check_type", "status", "findings")):
+            return [raw_checks]
+        return [c for c in raw_checks.values() if isinstance(c, dict)]
+    if isinstance(raw_checks, list):
+        return [c for c in raw_checks if isinstance(c, dict)]
+    return []
+
+
+def _normalize_findings(raw_findings: Any) -> List[Dict[str, Any]]:
+    if isinstance(raw_findings, dict):
+        # If it already looks like a single finding object, wrap it.
+        if any(k in raw_findings for k in ("timestamp_range_s", "observation", "confidence", "evidence_timestamps_s")):
+            return [raw_findings]
+        return [f for f in raw_findings.values() if isinstance(f, dict)]
+    if isinstance(raw_findings, list):
+        return [f for f in raw_findings if isinstance(f, dict)]
+    return []
+
+
+def collect_evidence_timestamps(report: Dict[str, Any]) -> List[int]:
+    ts: List[int] = []
+    for chk in _normalize_checks(report.get("checks", [])):
+        for finding in _normalize_findings(chk.get("findings", [])):
+            for t in finding.get("evidence_timestamps_s", []) or []:
+                if isinstance(t, (int, float)):
+                    ts.append(int(t))
+    # Deduplicate and sort
+    return sorted(set(ts))
+
+
+# -----------------------------
+# PDF report generator
+# -----------------------------
+
+def build_pdf_report(
+    report: Dict[str, Any],
+    evidence_images: List[Tuple[int, Path]],
+    out_pdf: Path,
+) -> Path:
+    c = canvas.Canvas(str(out_pdf), pagesize=A4)
+    width, height = A4
+
+    def write_line(y, txt, size=11, x=2*cm):
+        c.setFont("Helvetica", size)
+        c.drawString(x, y, txt)
+        return y - (0.6 * cm)
+
+    y = height - 2 * cm
+
+    video_id = report.get("video_id", "unknown")
+    y = write_line(y, f"Site Safety Report (Video ID: {video_id})", size=16)
+
+    summary = report.get("summary", {})
+    y = write_line(y, f"Overall risk level: {summary.get('overall_risk_level', 'unknown')}", size=12)
+
+    y = write_line(y, "Key findings:", size=12)
+    for kf in summary.get("key_findings", [])[:8]:
+        y = write_line(y, f"- {kf}", size=11)
+
+    y -= 0.3 * cm
+    y = write_line(y, "Checks:", size=12)
+
+    for chk in _normalize_checks(report.get("checks", [])):
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(2*cm, y, f"{chk.get('check_type', 'UNKNOWN')}  -  {chk.get('status', 'unknown')}")
+        y -= 0.7 * cm
+
+        c.setFont("Helvetica", 11)
+        for f in _normalize_findings(chk.get("findings", []))[:6]:
+            tr = f.get("timestamp_range_s", ["?", "?"])
+            obs = f.get("observation", "")
+            conf = f.get("confidence", "unknown")
+            y = write_line(y, f"- [{tr[0]}s-{tr[1]}s] ({conf}) {obs}", size=10)
+
+            if y < 4 * cm:
+                c.showPage()
+                y = height - 2 * cm
+
+        y -= 0.2 * cm
+
+    y = write_line(y, "Recommendations:", size=12)
+    for rec in report.get("recommendations", [])[:10]:
+        y = write_line(y, f"- {rec}", size=11)
+
+    notes = report.get("notes", [])
+    if notes:
+        y -= 0.2 * cm
+        y = write_line(y, "Notes:", size=12)
+        for n in notes[:8]:
+            y = write_line(y, f"- {n}", size=11)
+
+    # Evidence pages
+    if evidence_images:
+        c.showPage()
+        y = height - 2 * cm
+        y = write_line(y, "Evidence Frames:", size=14)
+
+        for t_s, img_path in evidence_images:
+            if y < 8 * cm:
+                c.showPage()
+                y = height - 2 * cm
+
+            y = write_line(y, f"Timestamp: {t_s}s", size=12)
+
+            # Fit image
+            max_w = width - 4 * cm
+            max_h = 9 * cm
+            with Image.open(img_path) as im:
+                iw, ih = im.size
+            scale = min(max_w / iw, max_h / ih)
+            draw_w, draw_h = iw * scale, ih * scale
+
+            c.drawImage(str(img_path), 2*cm, y - draw_h, width=draw_w, height=draw_h, preserveAspectRatio=True, mask="auto")
+            y -= (draw_h + 1.0 * cm)
+
+    c.save()
+    return out_pdf
+
+
+# -----------------------------
+# Main entry
+# -----------------------------
+
+def main():
+    cfg = ModelConfig()
+
+    input_path = f'{ROOT}/assets/roadworks_1.mp4'
+    video_path = Path(input_path)  # <-- set your input video
+    out_dir = Path("outputs")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    video_id = video_path.stem
+
+    model, processor = load_model(cfg)
+
+    report = run_video_json_report(
+        model=model,
+        processor=processor,
+        video_path=video_path,
+        video_id=video_id,
+        cfg=cfg,
+    )
+
+    # Save raw JSON
+    json_path = out_dir / f"{video_id}_safety_report.json"
+    json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    # Evidence frames
+    evidence_ts = collect_evidence_timestamps(report)
+    evidence_images: List[Tuple[int, Path]] = []
+    for t_s in evidence_ts[:30]:  # cap to avoid huge PDFs
+        img_path = out_dir / f"{video_id}_evidence_{t_s:06d}s.png"
+        extract_frame_at_second(video_path, t_s, img_path)
+        evidence_images.append((t_s, img_path))
+
+    # PDF
+    pdf_path = out_dir / f"{video_id}_safety_report.pdf"
+    build_pdf_report(report, evidence_images, pdf_path)
+
+    print(f"Saved JSON: {json_path}")
+    print(f"Saved PDF : {pdf_path}")
+    if evidence_images:
+        print(f"Saved {len(evidence_images)} evidence frames in {out_dir}/")
+
+
+if __name__ == "__main__":
+    main()
