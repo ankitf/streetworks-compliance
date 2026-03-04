@@ -1,4 +1,4 @@
-
+import argparse
 import json
 import math
 import re
@@ -412,11 +412,15 @@ def build_pdf_report(
 # -----------------------------
 
 def main():
+    ap = argparse.ArgumentParser(description="Generate UK streetworks compliance report from video")
+    ap.add_argument("-i", "--input", required=True, help="Input video path")
+    ap.add_argument("-o", "--output", default="outputs", help="Output directory path")
+    args = ap.parse_args()
+
     cfg = ModelConfig()
 
-    input_path = f'{ROOT}/assets/roadworks_1.mp4'
-    video_path = Path(input_path)  # <-- set your input video
-    out_dir = Path("outputs")
+    video_path = Path(args.input)
+    out_dir = Path(args.output)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     video_id = video_path.stem
