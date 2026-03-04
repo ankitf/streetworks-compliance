@@ -44,80 +44,78 @@ class ModelConfig:
 
 SYSTEM_PROMPT = "You are a helpful assistant."
 
-USER_PROMPT = """You are a UK worksite safety compliance agent for roadworks, streetworks, and construction videos.
-
-Your job is to produce a compliance report for:
-1) PPE compliance (hard hats, hi-vis vests/jackets, other visible PPE if relevant)
-2) UK roadworks “Chapter 8” traffic management: signage presence/placement/clarity (e.g., warning signs, directional signs, cones, temporary traffic control)
-3) Barrier continuity and site segregation: connected barriers, gaps, unsafe openings, missing end-caps, unclear boundaries.
-
+# Common prompt elements
+RULES_AND_FORMAT = """
 Rules:
-- Base findings ONLY on what is clearly visible. If unsure, say “uncertain”.
+- Base findings ONLY on what is clearly visible. If unsure, say "uncertain".
 - Provide timestamps (start/end) for each observation in mm:ss format.
 - If you report a failure, request evidence frames at specific timestamps in mm:ss format.
-- Do not invent standards text or claim legal compliance; describe visual compliance/risks.
 - Prefer structured output and be concise.
 
-Analyze the video for UK roadworks/streetworks safety and produce a structured safety report.
+Answer the question using the following format: <think> Your reasoning. </think> Write your final answer immediately after the </think> tag and include the timestamps in mm:ss format.
+"""
 
+BARRIER_PROMPT = f"""You are a UK worksite safety compliance agent.
+
+Your job is to produce a compliance report for Barrier Continuity.
+Check: Verify that barriers are continuously placed and locked with no gaps. Any gap between barriers is a safety violation.
+{RULES_AND_FORMAT}
 Return JSON exactly in this schema:
-
-{
-  "video_id": "string",
-  "summary": {
-    "overall_risk_level": "low|medium|high",
-    "key_findings": ["string", "..."]
-  },
-  "checks": [
-    {
-      "check_type": "PPE",
-      "status": "pass|fail|partial|uncertain",
-      "findings": [
-        {
-          "timestamp_range": ["start mm:ss", "end mm:ss"],
-          "observation": "string",
-          "confidence": "low|medium|high",
-          "evidence_timestamps": ["t1 mm:ss", "t2 mm:ss"]
-        }
-      ]
-    },
-    {
-      "check_type": "CHAPTER_8_SIGNAGE",
-      "status": "pass|fail|partial|uncertain",
-      "findings": [
-        {
-          "timestamp_range": ["start mm:ss", "end mm:ss"],
-          "observation": "string",
-          "confidence": "low|medium|high",
-          "evidence_timestamps": ["t1 mm:ss", "t2 mm:ss"]
-        }
-      ]
-    },
-    {
-      "check_type": "BARRIER_CONTINUITY",
-      "status": "pass|fail|partial|uncertain",
-      "findings": [
-        {
-          "timestamp_range": ["start mm:ss", "end mm:ss"],
-          "observation": "string",
-          "confidence": "low|medium|high",
-          "evidence_timestamps": ["t1 mm:ss", "t2 mm:ss"]
-        }
-      ]
-    }
+{{
+  "check_type": "BARRIER_CONTINUITY",
+  "status": "pass|fail|partial|uncertain",
+  "findings": [
+    {{
+      "timestamp_range": ["start mm:ss", "end mm:ss"],
+      "observation": "string",
+      "confidence": "low|medium|high",
+      "evidence_timestamps": ["t1 mm:ss", "t2 mm:ss"]
+    }}
   ],
-  "recommendations": ["string", "..."],
-  "notes": ["string", "..."]
-}
+  "recommendations": ["string", "..."]
+}}
+"""
 
-Additional guidance:
-- “status=fail” only if a clear safety issue is visible.
-- “partial” if mixed compliance.
-- Include evidence_timestamps only when helpful (especially for failures).
-- Describe the video Add timestamps in mm:ss format. Provide the result in json format with 'mm:ss.ff' format for time depiction for each event. Use keywords 'start', 'end' and 'caption' in the json output if helpful.
-- Keep key_findings and recommendations action-oriented.
+PPE_PROMPT = f"""You are a UK worksite safety compliance agent.
 
-Answer the question using the following format: <think> Your reasoning. </think> Write your final answer immediately after the </think> tag and include the timestamps.
+Your job is to produce a compliance report for PPE Compliance.
+Check: Verify that all persons visible on site are wearing high-visibility PPE (vest and hard hat).
+{RULES_AND_FORMAT}
+Return JSON exactly in this schema:
+{{
+  "check_type": "PPE",
+  "status": "pass|fail|partial|uncertain",
+  "findings": [
+    {{
+      "timestamp_range": ["start mm:ss", "end mm:ss"],
+      "observation": "string",
+      "confidence": "low|medium|high",
+      "evidence_timestamps": ["t1 mm:ss", "t2 mm:ss"]
+    }}
+  ],
+  "recommendations": ["string", "..."]
+}}
+"""
+
+SIGNAGE_PROMPT = f"""You are a UK worksite safety compliance agent.
+
+Your job is to produce a compliance report for Chapter 8 Signage Compliance.
+Check: Verify that proper warning signs are placed in accordance with UK Chapter 8 rules.
+{RULES_AND_FORMAT}
+Return JSON exactly in this schema:
+{{
+  "check_type": "CHAPTER_8_SIGNAGE",
+  "status": "pass|fail|partial|uncertain",
+  "findings": [
+    {{
+      "timestamp_range": ["start mm:ss", "end mm:ss"],
+      "observation": "string",
+      "confidence": "low|medium|high",
+      "evidence_timestamps": ["t1 mm:ss", "t2 mm:ss"]
+    }}
+  ],
+  "recommendations": ["string", "..."]
+}}
 """
 
 
@@ -152,7 +150,7 @@ def run_video_json_report(
     model,
     processor,
     video_path: Path,
-    video_id: str,
+    prompt: str,
     cfg: ModelConfig,
 ) -> Dict[str, Any]:
     conversation = [
@@ -164,7 +162,7 @@ def run_video_json_report(
             "role": "user",
             "content": [
                 {"type": "video", "video": str(video_path)},
-                {"type": "text", "text": USER_PROMPT.replace('"video_id": "string"', f'"video_id": "{video_id}"')},
+                {"type": "text", "text": prompt},
             ],
         },
     ]
@@ -178,7 +176,15 @@ def run_video_json_report(
         fps=cfg.fps_for_prompt,
     ).to(model.device)
 
-    generated_ids = model.generate(**inputs, max_new_tokens=cfg.max_new_tokens)
+    # generated_ids = model.generate(**inputs, max_new_tokens=cfg.max_new_tokens)
+    generated_ids = model.generate(
+        **inputs,
+        max_new_tokens=cfg.max_new_tokens,
+        do_sample=False,  # deterministic
+        temperature=0.0,  # safe with do_sample=False; keeps it stable
+        top_p=1.0,
+        repetition_penalty=1.05,  # small nudge to avoid looping
+    )
     generated_ids_trimmed = [
         out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids, strict=False)
     ]
@@ -443,13 +449,63 @@ def main():
 
     model, processor = load_model(cfg)
 
-    report = run_video_json_report(
+    print("Running check 1: Barrier Continuity...")
+    barrier_report = run_video_json_report(
         model=model,
         processor=processor,
         video_path=video_path,
-        video_id=video_id,
+        prompt=BARRIER_PROMPT,
         cfg=cfg,
     )
+
+    print("Running check 2: PPE Compliance...")
+    ppe_report = run_video_json_report(
+        model=model,
+        processor=processor,
+        video_path=video_path,
+        prompt=PPE_PROMPT,
+        cfg=cfg,
+    )
+
+    print("Running check 3: Chapter 8 Signage...")
+    signage_report = run_video_json_report(
+        model=model,
+        processor=processor,
+        video_path=video_path,
+        prompt=SIGNAGE_PROMPT,
+        cfg=cfg,
+    )
+
+    # Combine into a single report
+    checks = [barrier_report, ppe_report, signage_report]
+    all_recommendations = []
+    statuses = []
+    
+    for c in checks:
+        if "recommendations" in c:
+            all_recommendations.extend(c["recommendations"])
+        if "status" in c:
+            statuses.append(c["status"])
+
+    if "fail" in statuses:
+        overall_risk = "high"
+    elif "partial" in statuses:
+        overall_risk = "medium"
+    elif "pass" in statuses:
+        overall_risk = "low"
+    else:
+        overall_risk = "unknown"
+
+    report = {
+        "video_id": video_id,
+        "summary": {
+            "overall_risk_level": overall_risk,
+            "key_findings": [f"Based on 3 sub-checks, the site is classified as {overall_risk} risk."]
+        },
+        "checks": checks,
+        "recommendations": list(set(all_recommendations)), # deduplicate identical recommendations
+        "notes": ["Report aggregated from 3 sequential LVLM calls."]
+    }
 
     # Save raw JSON
     json_path = out_dir / f"{video_id}_safety_report.json"
@@ -458,7 +514,9 @@ def main():
     # Evidence frames
     evidence_ts = collect_evidence_timestamps(report)
     evidence_images: List[Tuple[int, Path]] = []
-    for t_s in evidence_ts[:30]:  # cap to avoid huge PDFs
+    for i, t_s in enumerate(evidence_ts):
+        if i >= 30:  # cap to avoid huge PDFs
+            break
         img_path = out_dir / f"{video_id}_evidence_{t_s:06d}s.png"
         extract_frame_at_second(video_path, t_s, img_path)
         evidence_images.append((t_s, img_path))
