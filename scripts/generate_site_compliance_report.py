@@ -42,7 +42,9 @@ class ModelConfig:
 # Prompt builder
 # -----------------------------
 
-SYSTEM_PROMPT = """You are a UK worksite safety compliance agent for roadworks, streetworks, and construction videos.
+SYSTEM_PROMPT = "You are a helpful assistant."
+
+USER_PROMPT = """You are a UK worksite safety compliance agent for roadworks, streetworks, and construction videos.
 
 Your job is to produce a compliance report for:
 1) PPE compliance (hard hats, hi-vis vests/jackets, other visible PPE if relevant)
@@ -51,15 +53,12 @@ Your job is to produce a compliance report for:
 
 Rules:
 - Base findings ONLY on what is clearly visible. If unsure, say “uncertain”.
-- Provide timestamps (start/end) for each observation.
-- If you report a failure, request evidence frames at specific timestamps (seconds).
+- Provide timestamps (start/end) for each observation in mm:ss format.
+- If you report a failure, request evidence frames at specific timestamps in mm:ss format.
 - Do not invent standards text or claim legal compliance; describe visual compliance/risks.
 - Prefer structured output and be concise.
 
-Output MUST be valid JSON matching the provided schema.
-"""
-
-USER_PROMPT = """Analyze the video for UK roadworks/streetworks safety and produce a structured safety report.
+Analyze the video for UK roadworks/streetworks safety and produce a structured safety report.
 
 Return JSON exactly in this schema:
 
@@ -75,10 +74,10 @@ Return JSON exactly in this schema:
       "status": "pass|fail|partial|uncertain",
       "findings": [
         {
-          "timestamp_range_s": [start_s, end_s],
+          "timestamp_range": ["start mm:ss", "end mm:ss"],
           "observation": "string",
           "confidence": "low|medium|high",
-          "evidence_timestamps_s": [t1, t2]
+          "evidence_timestamps": ["t1 mm:ss", "t2 mm:ss"]
         }
       ]
     },
@@ -87,10 +86,10 @@ Return JSON exactly in this schema:
       "status": "pass|fail|partial|uncertain",
       "findings": [
         {
-          "timestamp_range_s": [start_s, end_s],
+          "timestamp_range": ["start mm:ss", "end mm:ss"],
           "observation": "string",
           "confidence": "low|medium|high",
-          "evidence_timestamps_s": [t1, t2]
+          "evidence_timestamps": ["t1 mm:ss", "t2 mm:ss"]
         }
       ]
     },
@@ -99,10 +98,10 @@ Return JSON exactly in this schema:
       "status": "pass|fail|partial|uncertain",
       "findings": [
         {
-          "timestamp_range_s": [start_s, end_s],
+          "timestamp_range": ["start mm:ss", "end mm:ss"],
           "observation": "string",
           "confidence": "low|medium|high",
-          "evidence_timestamps_s": [t1, t2]
+          "evidence_timestamps": ["t1 mm:ss", "t2 mm:ss"]
         }
       ]
     }
@@ -114,9 +113,11 @@ Return JSON exactly in this schema:
 Additional guidance:
 - “status=fail” only if a clear safety issue is visible.
 - “partial” if mixed compliance.
-- Include evidence_timestamps_s only when helpful (especially for failures).
-- Use integer seconds for timestamps.
+- Include evidence_timestamps only when helpful (especially for failures).
+- Describe the video Add timestamps in mm:ss format. Provide the result in json format with 'mm:ss.ff' format for time depiction for each event. Use keywords 'start', 'end' and 'caption' in the json output if helpful.
 - Keep key_findings and recommendations action-oriented.
+
+Answer the question using the following format: <think> Your reasoning. </think> Write your final answer immediately after the </think> tag and include the timestamps.
 """
 
 
@@ -200,6 +201,9 @@ def coerce_json(text: str) -> Dict[str, Any]:
     """
     Cosmos/Qwen outputs might include extra text; try to extract the first JSON object.
     """
+    if "</think>" in text:
+        text = text.split("</think>")[-1]
+
     # First try direct parse
     try:
         return json.loads(text)
@@ -299,7 +303,7 @@ def _normalize_checks(raw_checks: Any) -> List[Dict[str, Any]]:
 def _normalize_findings(raw_findings: Any) -> List[Dict[str, Any]]:
     if isinstance(raw_findings, dict):
         # If it already looks like a single finding object, wrap it.
-        if any(k in raw_findings for k in ("timestamp_range_s", "observation", "confidence", "evidence_timestamps_s")):
+        if any(k in raw_findings for k in ("timestamp_range", "observation", "confidence", "evidence_timestamps")):
             return [raw_findings]
         return [f for f in raw_findings.values() if isinstance(f, dict)]
     if isinstance(raw_findings, list):
@@ -311,8 +315,20 @@ def collect_evidence_timestamps(report: Dict[str, Any]) -> List[int]:
     ts: List[int] = []
     for chk in _normalize_checks(report.get("checks", [])):
         for finding in _normalize_findings(chk.get("findings", [])):
-            for t in finding.get("evidence_timestamps_s", []) or []:
-                if isinstance(t, (int, float)):
+            for t in finding.get("evidence_timestamps", []) or []:
+                if isinstance(t, str):
+                    try:
+                        # Parse "mm:ss" or "mm:ss.ff" format
+                        parts = t.strip().split(":")
+                        if len(parts) == 2:
+                            m = int(parts[0])
+                            # handle potential .ff (milliseconds/frames)
+                            s_parts = parts[1].split(".")
+                            s = int(s_parts[0])
+                            ts.append(m * 60 + s)
+                    except ValueError:
+                        pass
+                elif isinstance(t, (int, float)):
                     ts.append(int(t))
     # Deduplicate and sort
     return sorted(set(ts))
@@ -357,10 +373,10 @@ def build_pdf_report(
 
         c.setFont("Helvetica", 11)
         for f in _normalize_findings(chk.get("findings", []))[:6]:
-            tr = f.get("timestamp_range_s", ["?", "?"])
+            tr = f.get("timestamp_range", ["?", "?"])
             obs = f.get("observation", "")
             conf = f.get("confidence", "unknown")
-            y = write_line(y, f"- [{tr[0]}s-{tr[1]}s] ({conf}) {obs}", size=10)
+            y = write_line(y, f"- [{tr[0]} - {tr[1]}] ({conf}) {obs}", size=10)
 
             if y < 4 * cm:
                 c.showPage()
