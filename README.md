@@ -61,7 +61,6 @@ After the three model calls complete, outputs are merged into a single report ob
 
 - Consolidated `checks` array (Barrier, PPE, Signage)
 - Aggregated recommendations
-- Overall risk classification derived from per-check statuses
 - Consolidated key findings
 
 Then the pipeline generates:
@@ -89,6 +88,8 @@ streetworks-compliance/
 ├── sample_output/
 └── scripts/
     └── generate_site_compliance_report.py
+    └── barrier_continuity_assessment.ipynb
+    
 ```
 
 ## Run the Script
