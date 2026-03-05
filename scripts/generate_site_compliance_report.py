@@ -100,7 +100,12 @@ Return JSON exactly in this schema:
 SIGNAGE_PROMPT = f"""You are a UK worksite safety compliance agent.
 
 Your job is to produce a compliance report for Chapter 8 Signage Compliance.
-Check: Verify that proper warning signs are placed in accordance with UK Chapter 8 rules.
+
+Examine the entire video and check whether the traffic management signage meets UK Chapter 8 requirements:
+- Required warning signs are present (e.g. "Road Works Ahead", "Give Way", lane closure signs, speed limit signs)
+- Signs are positioned at appropriate distances ahead of the works
+- Signs are upright, visible, and not obscured or fallen over
+- Sign sequences follow a logical approach order (advance warning → taper → works zone)
 {RULES_AND_FORMAT}
 Return JSON exactly in this schema:
 {{
