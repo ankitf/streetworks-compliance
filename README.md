@@ -77,7 +77,10 @@ A run typically produces files in the selected output directory:
 
 ## Demo 
 ### Input video
-<video src="./sample_data/test_video_1.mp4" controls></video>
+
+
+https://github.com/user-attachments/assets/48e416f4-99b4-40a2-aebb-08ce70f02cc2
+
 
 ### Report
 ![test_video_1_report.jpg](sample_outputs/test_video_1_report.jpg)
