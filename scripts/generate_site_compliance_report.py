@@ -63,7 +63,7 @@ Check: Verify that barriers are continuously placed and locked with no gaps. Any
 Return JSON exactly in this schema:
 {{
   "check_type": "BARRIER_CONTINUITY",
-  "status": "pass|fail|partial|uncertain",
+  "status": "Compliant/Not Compliant",
   "findings": [
     {{
       "timestamp_range": ["start mm:ss", "end mm:ss"],
@@ -84,7 +84,7 @@ Check: Verify that all persons visible on site are wearing high-visibility PPE (
 Return JSON exactly in this schema:
 {{
   "check_type": "PPE",
-  "status": "pass|fail|partial|uncertain",
+  "status": "Compliant/Not Compliant",
   "findings": [
     {{
       "timestamp_range": ["start mm:ss", "end mm:ss"],
@@ -105,7 +105,7 @@ Check: Verify that proper warning signs are placed in accordance with UK Chapter
 Return JSON exactly in this schema:
 {{
   "check_type": "CHAPTER_8_SIGNAGE",
-  "status": "pass|fail|partial|uncertain",
+  "status": "Compliant/Not Compliant",
   "findings": [
     {{
       "timestamp_range": ["start mm:ss", "end mm:ss"],
@@ -409,11 +409,7 @@ def build_pdf_report(
     y = write_line(y, f"Streetwork compliance report (Video ID: {video_id})", size=16)
 
     summary = report.get("summary", {})
-    y = write_line(y, f"Overall risk level: {summary.get('overall_risk_level', 'unknown')}", size=12)
 
-    y = write_line(y, "Key findings:", size=12)
-    for kf in summary.get("key_findings", [])[:8]:
-        y = write_line(y, f"- {kf}", size=11)
 
     y -= 0.3 * cm
     y = write_line(y, "Checks:", size=12)
