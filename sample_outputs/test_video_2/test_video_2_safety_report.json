@@ -1,0 +1,87 @@
+{
+  "video_id": "test_video_2",
+  "summary": {
+    "overall_risk_level": "unknown",
+    "key_findings": [
+      "Based on 3 sub-checks, the site is classified as unknown risk."
+    ]
+  },
+  "checks": [
+    {
+      "check_type": "BARRIER_CONTINUITY",
+      "status": "Compliant",
+      "findings": [
+        {
+          "timestamp_range": [
+            "00:00",
+            "00:10"
+          ],
+          "observation": "All barriers are securely positioned and locked together with no gaps observed.",
+          "confidence": "high",
+          "evidence_timestamps": [
+            "00:00",
+            "00:10"
+          ]
+        }
+      ],
+      "recommendations": [
+        ""
+      ]
+    },
+    {
+      "check_type": "PPE",
+      "status": "Compliant",
+      "findings": [
+        {
+          "timestamp_range": [
+            "00:00",
+            "00:10"
+          ],
+          "observation": "All workers are wearing high-vis vests and white helmets.",
+          "confidence": "high",
+          "evidence_timestamps": [
+            "00:00",
+            "00:10"
+          ]
+        }
+      ],
+      "recommendations": [
+        ""
+      ]
+    },
+    {
+      "check_type": "CHAPTER_8_SIGNAGE",
+      "status": "Not Compliant",
+      "findings": [
+        {
+          "timestamp_range": "00:00:00",
+          "observation": "The \"PEDESTRIANS\" sign is improperly placed; it should ideally be positioned at a safe distance from the construction zone.",
+          "confidence": "high",
+          "evidence_timestamps": [
+            "00:00:00"
+          ]
+        },
+        {
+          "timestamp_range": "00:00:00",
+          "observation": "There is no \"ROAD WORKS AHEAD\" warning sign visible in the video.",
+          "confidence": "high",
+          "evidence_timestamps": [
+            "00:00:00"
+          ]
+        }
+      ],
+      "recommendations": [
+        "Ensure the \"PEDESTRIANS\" sign is correctly positioned at a safe distance from the construction zone.",
+        "Install a \"ROAD WORKS AHEAD\" warning sign to comply with UK Chapter 8 requirements."
+      ]
+    }
+  ],
+  "recommendations": [
+    "",
+    "Ensure the \"PEDESTRIANS\" sign is correctly positioned at a safe distance from the construction zone.",
+    "Install a \"ROAD WORKS AHEAD\" warning sign to comply with UK Chapter 8 requirements."
+  ],
+  "notes": [
+    "Report aggregated from 3 sequential LVLM calls."
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "video_id": "test_video_1",
+  "summary": {
+    "overall_risk_level": "unknown",
+    "key_findings": [
+      "Based on 3 sub-checks, the site is classified as unknown risk."
+    ]
+  },
+  "checks": [
+    {
+      "check_type": "BARRIER_CONTINUITY",
+      "status": "Not Compliant",
+      "findings": [
+        {
+          "timestamp_range": [
+            "00:00",
+            "00:07"
+          ],
+          "observation": "There is a noticeable gap between the first and second barricade units, compromising the continuity of the barrier system.",
+          "confidence": "high",
+          "evidence_timestamps": [
+            "00:00",
+            "00:07"
+          ]
+        }
+      ],
+      "recommendations": [
+        "Ensure all barricade units are securely connected without any gaps.",
+        "Verify that each unit is locked and properly aligned.",
+        "Inspect the connection points between units to guarantee integrity."
+      ]
+    },
+    {
+      "check_type": "PPE",
+      "status": "Not Compliant",
+      "findings": [
+        {
+          "timestamp_range": "00:00:00",
+          "observation": "Pedestrians are not wearing high-vis vests.",
+          "confidence": "high",
+          "evidence_timestamps": [
+            "00:00:00"
+          ]
+        },
+        {
+          "timestamp_range": "00:00:00",
+          "observation": "Pedestrians are not wearing hard hats.",
+          "confidence": "high",
+          "evidence_timestamps": [
+            "00:00:00"
+          ]
+        }
+      ],
+      "recommendations": [
+        "Ensure all pedestrians comply with high-vis vest and hard hat requirements.",
+        "Provide training on mandatory PPE regulations.",
+        "Inspect signage compliance and enforce penalties for violations."
+      ]
+    },
+    {
+      "check_type": "CHAPTER_8_SIGNAGE",
+      "status": "Not Compliant",
+      "findings": [
+        {
+          "timestamp_range": [
+            "00:00",
+            "00:07"
+          ],
+          "observation": "The signage is present but lacks clarity due to poor visibility.",
+          "confidence": "low",
+          "evidence_timestamps": [
+            "00:00",
+            "00:07"
+          ]
+        }
+      ],
+      "recommendations": [
+        "Ensure the signage is clearly visible and legible by improving lighting or positioning.",
+        "Verify that the signage complies with UK standards regarding size, color, and placement."
+      ]
+    }
+  ],
+  "recommendations": [
+    "Verify that each unit is locked and properly aligned.",
+    "Inspect signage compliance and enforce penalties for violations.",
+    "Ensure all pedestrians comply with high-vis vest and hard hat requirements.",
+    "Inspect the connection points between units to guarantee integrity.",
+    "Verify that the signage complies with UK standards regarding size, color, and placement.",
+    "Ensure the signage is clearly visible and legible by improving lighting or positioning.",
+    "Provide training on mandatory PPE regulations.",
+    "Ensure all barricade units are securely connected without any gaps."
+  ],
+  "notes": [
+    "Report aggregated from 3 sequential LVLM calls."
+  ]
+}
