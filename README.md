@@ -1,147 +1,125 @@
 # **Street Works Compliance using Cosmos Reason-2**
-**Decision Reel: Spatiotemporal Barrier Continuity Assessment**
+**Sequential UK Site Compliance Checks (Barrier, PPE, Chapter 8 Signage)**
 
 ## Overview
 
-This project explores whether a reasoning-oriented vision-language model can support structured compliance-style inspection tasks.
+This project explores whether a reasoning-oriented vision-language model can support structured compliance-style inspection tasks on street-works video.
 
-Rather than implementing full regulatory compliance, the notebook evaluates a focused hypothesis:
+Rather than implementing full regulatory compliance, the current pipeline runs three focused visual checks and aggregates them into an audit-style output package.
 
-> **Cosmos Reason-2 enables structured spatiotemporal reasoning for inspection-oriented visual analysis tasks beyond simple object detection.**
+The script `scripts/generate_site_compliance_report.py` performs:
 
-The selected scenario is **barrier continuity assessment** in a street-works environment. The system detects structural discontinuities in temporary construction barriers using prompt-engineered inspection logic and produces audit-ready artefacts.
+1. **Barrier Continuity Check**
+2. **PPE Compliance Check**
+3. **Chapter 8 Signage Check**
+
+Each check is executed as a separate model invocation, then merged into one consolidated JSON + PDF report with evidence frames.
 
 > Note:
 >
-> The accompanying notebook contains a more detailed discussion of the motivation, reasoning hypothesis, prompt design considerations, implementation trade-offs, and observed behaviors. The README provides a high-level summary, while the notebook documents the full exploratory workflow.
+> This repository is a focused capability exploration, not a legal compliance engine. Outputs should be treated as decision-support artefacts for human review.
 
-## **Scope**
+## Scope
 
-Street-works compliance spans dozens of regulatory conditions and contextual rules. Implementing complete end-to-end compliance e.g., [Red Book (UK)](https://assets.publishing.service.gov.uk/media/5a7d8038e5274a676d532707/safety-at-streetworks.pdf) or [MUTCD (US)](https://mutcd.fhwa.dot.gov)  is intentionally out of scope.
+Street-works compliance spans many contextual rules. Full end-to-end compliance against documents such as [Safety at Street Works and Road Works (UK Red Book)](https://assets.publishing.service.gov.uk/media/5a7d8038e5274a676d532707/safety-at-streetworks.pdf) is intentionally out of scope.
 
-This implementation focuses on a single representative task:
+This implementation focuses on three representative checks:
 
-**Barrier Continuity and Effectiveness**
+### 1) Barrier Continuity
+Detects visible issues such as:
+- Gaps between adjacent barriers
+- Missing or detached barrier connections
+- Breaks in the continuous boundary around the works area
 
-The goal is to detect:
-* Visible gaps between adjacent barrier panels
-* Missing or detached connections
-* Breaks in the continuous physical boundary
+### 2) PPE Compliance
+Checks whether visible people appear to be wearing:
+- High-visibility upper-body PPE (vest/jacket)
+- Hard hats
 
-The task requires:
-* Spatiotemporal reasoning
-* Structural continuity interpretation
-* Functional assessment beyond object presence
+### 3) Chapter 8 Signage
+Checks for visible warning-sign presence and placement quality, including obvious missing/mis-positioned signage risks.
 
-## **Approach**
+## Approach
 
-### **Prompt-Driven Domain Encoding**
+### Prompt-Driven, Modular Inference
 
-No fine-tuning or custom training is used.
+No fine-tuning is used. Compliance logic is encoded via prompt design.
 
-Compliance logic is encoded through structured prompts that:
-* Define inspection intent
-* Specify discontinuity criteria
-* Constrain output to structured JSON
+Instead of one monolithic prompt, the pipeline uses **three focused prompts** and runs them sequentially:
 
-The model:
-* Receives the full video
-* Internally extracts frames
-* Performs temporal reasoning
-* Returns structured timestamps of detected discontinuities
+1. Barrier continuity prompt
+2. PPE prompt
+3. Chapter 8 signage prompt
 
-### **Post-Processing Pipeline**
+This modular structure reduces reasoning overload on smaller models and improves output consistency per rule domain.
 
-* Model output is transformed into operational artefacts through:
-* Timestamp merging into continuous intervals
-* Evidence frame extraction
-* Decision reel generation (video summary of flagged intervals)
-* Static collage generation (visual summary)
-* Structured summary report
+### Post-Processing Pipeline
 
-**This converts raw reasoning output into inspection-ready documentation.**
+After the three model calls complete, outputs are merged into a single report object:
 
-## **Observed Behaviors**
+- Consolidated `checks` array (Barrier, PPE, Signage)
+- Aggregated recommendations
+- Overall risk classification derived from per-check statuses
+- Consolidated key findings
 
-During development, several important behaviors were observed:
+Then the pipeline generates:
 
-* Detection quality improves when prompts explicitly encode temporal continuity.
-* Overly verbose reasoning instructions may reduce detection coverage (reasoning overload).
-* Output granularity may vary slightly across runs due to decoding dynamics.
-* Interval merging is essential for stable, audit-style reporting.
-* Modular rule-specific inference is likely more scalable than a single monolithic compliance prompt.
+- Structured JSON report
+- Evidence frame extraction (from model-requested timestamps)
+- PDF report with findings and embedded evidence images
 
-These findings suggest that prompt calibration and aggregation logic are critical components of reasoning-based compliance systems.
+## Outputs
 
-## **Repository Structure**
+A run typically produces files in the selected output directory:
 
-* notebook/ – Main Colab notebook
-* sample_data/ – Example inspection video
-* sample_output/ – Example outputs (two representative runs)
+- `<video_id>_safety_report.json` (consolidated report)
+- `<video_id>_safety_report.pdf` (human-readable report)
+- `<video_id>_evidence_<CHECK_TYPE>_<timestamp>.png` (evidence frames)
 
-```
-street_works_compliance/
-│
+## Repository Structure
+
+```text
+streetworks-compliance/
 ├── README.md
 ├── requirements.txt
-│
-├── notebook/
-│   └── street_works_compliance.ipynb
-│
+├── outputs/
 ├── sample_data/
-│   └── input_video.mp4
-│
 ├── sample_output/
-│   ├── run_1/
-│   └── run_2/
+└── scripts/
+    └── generate_site_compliance_report.py
 ```
 
+## Run the Script
 
-## Running the Notebook
+### Environment
 
-### **Environment**
+Use a Python environment with dependencies from `requirements.txt`.
+A GPU is recommended for practical inference speed.
 
-This notebook is designed to run in Google Colab (GPU runtime recommended).
-Colab-specific utilities are used for:
-* Authentication
-* File upload
-* Interactive display
+### Command
 
-### **Steps**
+```bash
+python scripts/generate_site_compliance_report.py \
+  --input sample_data/input_video.mp4 \
+  --output outputs
+```
 
-1. Open the notebook in Google Colab.
-2. Set runtime to GPU.
-3. Install dependencies (first cell).
-4. Upload or use provided sample video.
-5. Run inference and generate outputs.
+### Arguments
 
-### **Dependencies**
-See *requirements.txt*
+- `--input` / `-i`: path to input video (required)
+- `--output` / `-o`: output directory path (default: `outputs`)
 
-Core libraries include:
+## Reproducibility Notes
 
-* transformers (>= 4.57.0)
-* torch
-* accelerate
-* opencv-python
-* pillow
-* numpy
-* matplotlib
-* huggingface_hub
+- Inference can vary slightly across runs due to generation dynamics.
+- Prompt wording strongly affects check sensitivity/coverage.
+- Sequential, rule-specific passes are generally more stable than one broad compliance prompt.
 
-### **Reproducibility Notes**
+## Conclusion
 
-* Inference outputs may vary slightly across runs due to decoding dynamics.
-* Timestamp merging ensures stable reporting behavior.
-* Two sample runs are included to illustrate output granularity differences.
+This project demonstrates a practical **modular compliance-analysis pattern** for street-works video:
 
-## **Conclusion**
-
-Within a narrowly scoped barrier continuity scenario, this project demonstrates that reasoning-oriented visual models can support structured, inspection-style tasks that extend beyond conventional object detection.
-
-The results suggest that:
-* Prompt engineering functions as lightweight domain encoding.
-* Spatiotemporal reasoning can be operationalized without fine-tuning.
-* Modular rule-based reasoning passes may provide a scalable compliance architecture.
-
-This work is intended as a focused exploration of reasoning capability, not a complete regulatory compliance system.
+- Rule-specific LVLM passes (Barrier, PPE, Signage)
+- Structured JSON aggregation
+- Evidence-frame traceability
+- PDF reporting for review workflows
