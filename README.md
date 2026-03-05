@@ -138,9 +138,9 @@ A GPU is recommended for practical inference speed.
 ### Command
 
 ```bash
-python scripts/generate_site_compliance_report.py \
-  --input sample_data/input_video.mp4 \
-  --output outputs
+python scripts/generate_site_compliance_report.py --input sample_data/test_video_1.mp4 
+
+
 ```
 
 ### Arguments
