@@ -17,7 +17,9 @@ Each check is executed as a separate model invocation, then merged into one cons
 
 > Note:
 >
-> This repository is a focused capability exploration, not a legal compliance engine. Outputs should be treated as decision-support artefacts for human review.
+> The accompanying notebook contains a more detailed discussion of the motivation, reasoning hypothesis, prompt design considerations, implementation trade-offs, and observed behaviors. The notebook documents the exploratory workflow.
+> barrier_continuity_assessment.ipynb
+
 
 ## Scope
 
