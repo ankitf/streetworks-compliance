@@ -1,5 +1,4 @@
 # **Street Works Compliance using Cosmos Reason-2**
-**Sequential UK Site Compliance Checks (Barrier, PPE, Chapter 8 Signage)**
 
 ## Overview
 
@@ -70,12 +69,25 @@ Then the pipeline generates:
 - PDF report with findings and embedded evidence images
 
 ## Outputs
-
 A run typically produces files in the selected output directory:
 
 - `<video_id>_safety_report.json` (consolidated report)
 - `<video_id>_safety_report.pdf` (human-readable report)
 - `<video_id>_evidence_<CHECK_TYPE>_<timestamp>.png` (evidence frames)
+
+## Demo 
+### Input video
+<video src="./sample_data/test_video_1.mp4" controls></video>
+
+### Report
+![test_video_1_report.jpg](sample_outputs/test_video_1_report.jpg)
+
+
+
+
+
+
+
 
 ## Repository Structure
 
@@ -126,3 +138,4 @@ This project demonstrates a practical **modular compliance-analysis pattern** fo
 - Structured JSON aggregation
 - Evidence-frame traceability
 - PDF reporting for review workflows
+
