@@ -89,12 +89,29 @@ https://github.com/user-attachments/assets/fcb75c99-9e6d-4262-af17-c052df67838a
 ### Report
 ![test_video_2_report](https://github.com/user-attachments/assets/41f4fe89-0052-4b21-8867-ad1f74c73256)
 
+## Further Exploration: Barrier Continuity
 
+Additional exploratory work for barrier continuity is documented in:
 
+- `scripts/barrier_continuity_assessment.ipynb`
 
+This notebook goes deeper into the barrier-only workflow and experiments beyond the final script, including:
 
+- prompt and reasoning behavior analysis for gap/discontinuity detection
+- timestamp handling and interval consolidation logic
+- visual evidence packaging for review
 
+Representative exploratory outputs are available under:
 
+- `sample_outputs/barrier_continuity_assessment/output_run_1/`
+- `sample_outputs/barrier_continuity_assessment/output_run_2/`
+
+Each run includes artifacts such as:
+
+- `decision_reel.mp4`
+- `evidence_collage.jpg`
+- `metrics.json`
+- `summary.txt`
 
 ## Repository Structure
 
