@@ -76,14 +76,18 @@ A run typically produces files in the selected output directory:
 - `<video_id>_evidence_<CHECK_TYPE>_<timestamp>.png` (evidence frames)
 
 ## Demo 
-### Input video
-
-
+### Input video 1
 https://github.com/user-attachments/assets/48e416f4-99b4-40a2-aebb-08ce70f02cc2
 
 
 ### Report
 ![test_video_1_report.jpg](sample_outputs/test_video_1_report.jpg)
+
+### Input video 2
+https://github.com/user-attachments/assets/fcb75c99-9e6d-4262-af17-c052df67838a
+
+### Report
+![test_video_2_safety_report_page-0001](https://github.com/user-attachments/assets/215cbbf3-0b0d-4779-becf-964f2644e7bc)
 
 
 
