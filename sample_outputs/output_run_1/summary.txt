@@ -1,0 +1,24 @@
+Barrier Gap Detection Summary
+================================
+
+Generated: 2026-02-14 10:16:14
+
+Video Duration: 15.50s
+Total Gaps Detected: 11
+Total Exposure Time: 2.90s
+Average Gap Duration: 0.26s
+Longest Gap: 0.90s
+
+Gap Intervals:
+--------------------------------
+Gap 1: 0.00s - 0.20s (Duration: 0.20s)
+Gap 2: 2.00s - 2.20s (Duration: 0.20s)
+Gap 3: 3.00s - 3.20s (Duration: 0.20s)
+Gap 4: 4.00s - 4.20s (Duration: 0.20s)
+Gap 5: 6.30s - 6.50s (Duration: 0.20s)
+Gap 6: 7.30s - 8.20s (Duration: 0.90s)
+Gap 7: 9.50s - 9.70s (Duration: 0.20s)
+Gap 8: 10.50s - 10.70s (Duration: 0.20s)
+Gap 9: 11.80s - 12.00s (Duration: 0.20s)
+Gap 10: 13.80s - 14.00s (Duration: 0.20s)
+Gap 11: 15.30s - 15.50s (Duration: 0.20s)

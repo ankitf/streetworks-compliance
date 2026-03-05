@@ -1,0 +1,33 @@
+{
+  "video_duration": 14.7,
+  "total_gaps": 4,
+  "total_gap_time": 0.8,
+  "average_gap_duration": 0.2,
+  "longest_gap": 0.2,
+  "gaps": [
+    {
+      "id": 1,
+      "start": 0,
+      "end": 0.2,
+      "duration": 0.2
+    },
+    {
+      "id": 2,
+      "start": 8.5,
+      "end": 8.7,
+      "duration": 0.2
+    },
+    {
+      "id": 3,
+      "start": 9.5,
+      "end": 9.7,
+      "duration": 0.2
+    },
+    {
+      "id": 4,
+      "start": 14.5,
+      "end": 14.7,
+      "duration": 0.2
+    }
+  ]
+}
