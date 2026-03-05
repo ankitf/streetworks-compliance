@@ -317,9 +317,11 @@ def _normalize_findings(raw_findings: Any) -> List[Dict[str, Any]]:
     return []
 
 
-def collect_evidence_timestamps(report: Dict[str, Any]) -> List[int]:
-    ts: List[int] = []
+def collect_evidence_timestamps_by_check(report: Dict[str, Any]) -> Dict[str, List[int]]:
+    result: Dict[str, List[int]] = {}
     for chk in _normalize_checks(report.get("checks", [])):
+        check_type = chk.get("check_type", "UNKNOWN")
+        ts: List[int] = []
         for finding in _normalize_findings(chk.get("findings", [])):
             for t in finding.get("evidence_timestamps", []) or []:
                 if isinstance(t, str):
@@ -336,8 +338,15 @@ def collect_evidence_timestamps(report: Dict[str, Any]) -> List[int]:
                         pass
                 elif isinstance(t, (int, float)):
                     ts.append(int(t))
+        if ts:
+            if check_type not in result:
+                result[check_type] = []
+            result[check_type].extend(ts)
+    
     # Deduplicate and sort
-    return sorted(set(ts))
+    for k in result:
+        result[k] = sorted(set(result[k]))
+    return result
 
 
 # -----------------------------
@@ -346,7 +355,7 @@ def collect_evidence_timestamps(report: Dict[str, Any]) -> List[int]:
 
 def build_pdf_report(
     report: Dict[str, Any],
-    evidence_images: List[Tuple[int, Path]],
+    evidence_images_by_check: Dict[str, List[Tuple[int, Path]]],
     out_pdf: Path,
 ) -> Path:
     c = canvas.Canvas(str(out_pdf), pagesize=A4)
@@ -354,13 +363,50 @@ def build_pdf_report(
 
     def write_line(y, txt, size=11, x=2*cm):
         c.setFont("Helvetica", size)
-        c.drawString(x, y, txt)
-        return y - (0.6 * cm)
+        
+        # Wrap text to fit within page width margins
+        max_text_width = width - (x + 2*cm) # Leaves 2cm margin on right
+        
+        text_obj = c.beginText(x, y)
+        text_obj.setFont("Helvetica", size)
+        
+        # Simple word wrap loop finding break points
+        words = txt.split()
+        lines = []
+        current_line = []
+        for word in words:
+            current_line.append(word)
+            # Check width of tentative line
+            line_width = c.stringWidth(" ".join(current_line), "Helvetica", size)
+            if line_width > max_text_width:
+                # Remove word that caused overflow
+                if len(current_line) > 1:
+                    current_line.pop()
+                    lines.append(" ".join(current_line))
+                    current_line = [word] # Start new line with the overflowing word
+                else:
+                    # Single very long word, just force it and accept some overflow
+                    lines.append(" ".join(current_line))
+                    current_line = []
+        if current_line:
+            lines.append(" ".join(current_line))
+        
+        # Draw the wrapped lines
+        for text_line in lines:
+            text_obj.textLine(text_line)
+        
+        c.drawText(text_obj)
+        
+        # Calculate new Y offset based on number of wrapped lines drawn. TextLine adds trailing space, approx 1.2 * size.
+        # But ReportLab textLine standard leading is roughly 1.2 * fontsize.
+        # Original simple drop was 0.6*cm. Let's return new Y.
+        lines_drawn = len(lines) if lines else 1
+        return y - (0.5 * cm * lines_drawn) - (0.1 * cm)
 
     y = height - 2 * cm
 
     video_id = report.get("video_id", "unknown")
-    y = write_line(y, f"Site Safety Report (Video ID: {video_id})", size=16)
+    y = write_line(y, f"Streetwork compliance report (Video ID: {video_id})", size=16)
 
     summary = report.get("summary", {})
     y = write_line(y, f"Overall risk level: {summary.get('overall_risk_level', 'unknown')}", size=12)
@@ -402,28 +448,43 @@ def build_pdf_report(
             y = write_line(y, f"- {n}", size=11)
 
     # Evidence pages
-    if evidence_images:
+    if evidence_images_by_check:
         c.showPage()
         y = height - 2 * cm
-        y = write_line(y, "Evidence Frames:", size=14)
+        y = write_line(y, "Evidence Frames:", size=16)
+        y = y - (0.5 * cm)
 
-        for t_s, img_path in evidence_images:
-            if y < 8 * cm:
+        for check_type, img_list in evidence_images_by_check.items():
+            if not img_list:
+                continue
+
+            if y < 4 * cm:
                 c.showPage()
                 y = height - 2 * cm
 
-            y = write_line(y, f"Timestamp: {t_s}s", size=12)
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(2*cm, y, f"{check_type} evidence frames")
+            y = y - (0.8 * cm)
 
-            # Fit image
-            max_w = width - 4 * cm
-            max_h = 9 * cm
-            with Image.open(img_path) as im:
-                iw, ih = im.size
-            scale = min(max_w / iw, max_h / ih)
-            draw_w, draw_h = iw * scale, ih * scale
+            for t_s, img_path in img_list:
+                if y < 8 * cm:
+                    c.showPage()
+                    y = height - 2 * cm
 
-            c.drawImage(str(img_path), 2*cm, y - draw_h, width=draw_w, height=draw_h, preserveAspectRatio=True, mask="auto")
-            y -= (draw_h + 1.0 * cm)
+                y = write_line(y, f"Timestamp: {t_s}s", size=12)
+
+                # Fit image
+                max_w = width - 4 * cm
+                max_h = 9 * cm
+                with Image.open(img_path) as im:
+                    iw, ih = im.size
+                scale = min(max_w / iw, max_h / ih)
+                draw_w, draw_h = iw * scale, ih * scale
+
+                c.drawImage(str(img_path), 2*cm, y - draw_h, width=draw_w, height=draw_h, preserveAspectRatio=True, mask="auto")
+                y = y - (draw_h + 1.0 * cm)
+            
+            y = y - (0.5 * cm)
 
     c.save()
     return out_pdf
@@ -512,23 +573,28 @@ def main():
     json_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     # Evidence frames
-    evidence_ts = collect_evidence_timestamps(report)
-    evidence_images: List[Tuple[int, Path]] = []
-    for i, t_s in enumerate(evidence_ts):
-        if i >= 30:  # cap to avoid huge PDFs
-            break
-        img_path = out_dir / f"{video_id}_evidence_{t_s:06d}s.png"
-        extract_frame_at_second(video_path, t_s, img_path)
-        evidence_images.append((t_s, img_path))
+    evidence_ts_by_check = collect_evidence_timestamps_by_check(report)
+    evidence_images_by_check: Dict[str, List[Tuple[int, Path]]] = {}
+    
+    total_extracted = 0
+    for check_type, ts_list in evidence_ts_by_check.items():
+        evidence_images_by_check[check_type] = []
+        for t_s in ts_list:
+            if total_extracted >= 30:  # cap to avoid huge PDFs
+                break
+            img_path = out_dir / f"{video_id}_evidence_{check_type}_{t_s:06d}s.png"
+            extract_frame_at_second(video_path, t_s, img_path)
+            evidence_images_by_check[check_type].append((t_s, img_path))
+            total_extracted = total_extracted + 1
 
     # PDF
     pdf_path = out_dir / f"{video_id}_safety_report.pdf"
-    build_pdf_report(report, evidence_images, pdf_path)
+    build_pdf_report(report, evidence_images_by_check, pdf_path)
 
     print(f"Saved JSON: {json_path}")
     print(f"Saved PDF : {pdf_path}")
-    if evidence_images:
-        print(f"Saved {len(evidence_images)} evidence frames in {out_dir}/")
+    if total_extracted > 0:
+        print(f"Saved {total_extracted} evidence frames in {out_dir}/")
 
 
 if __name__ == "__main__":
